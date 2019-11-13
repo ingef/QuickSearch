@@ -1,4 +1,4 @@
-package com.zigurs.karlis.utils.search.graph;
+package de.ingef.utils.search.graph;
 
 import org.junit.Test;
 

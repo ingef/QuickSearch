@@ -15,10 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.zigurs.karlis.utils.search.graph;
+package de.ingef.utils.search.graph;
 
-import com.zigurs.karlis.utils.collections.ImmutableSet;
-import com.zigurs.karlis.utils.search.model.QuickSearchStats;
+import de.ingef.utils.search.ImmutableSet;
+import de.ingef.utils.search.SearchScorer;
+import de.ingef.utils.search.model.QuickSearchStats;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -117,7 +118,7 @@ public class QSGraph<T extends Comparable<T>> {
      * @return map of accumulated items with their highest score encountered during walk (may be empty)
      */
     public Map<T, Double> walkAndScore(final String fragment,
-                                       final BiFunction<String, String, Double> scorerFunction) {
+                                       final SearchScorer scorerFunction) {
         long readLock = stampedLock.readLock();
         try {
             return walkAndScoreImpl(fragment, scorerFunction);
@@ -223,7 +224,7 @@ public class QSGraph<T extends Comparable<T>> {
      */
 
     private Map<T, Double> walkAndScoreImpl(final String fragment,
-                                            final BiFunction<String, String, Double> scorerFunction) {
+                                            final SearchScorer scorerFunction) {
         GraphNode<T> root = fragmentsNodesMap.get(fragment);
 
         if (root == null) {
@@ -249,11 +250,11 @@ public class QSGraph<T extends Comparable<T>> {
                               final GraphNode<T> node,
                               final Map<T, Double> accumulated,
                               final Set<String> visited,
-                              final BiFunction<String, String, Double> keywordMatchScorer) {
+                              final SearchScorer keywordMatchScorer) {
         visited.add(node.getIdentity());
 
         if (!node.getItems().isEmpty()) {
-            Double score = keywordMatchScorer.apply(originalFragment, node.getIdentity());
+            Double score = keywordMatchScorer.score(originalFragment, node.getIdentity());
             if (score > 0.0)
                 node.getItems().forEach(item -> accumulated.merge(item, score, (d1, d2) -> d1.compareTo(d2) > 0 ? d1 : d2));
         }

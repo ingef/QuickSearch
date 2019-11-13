@@ -15,13 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.zigurs.karlis.utils.search;
+package de.ingef.utils.search;
 
-import com.zigurs.karlis.utils.collections.ImmutableSet;
-import com.zigurs.karlis.utils.search.graph.QSGraph;
-import com.zigurs.karlis.utils.search.model.QuickSearchStats;
-import com.zigurs.karlis.utils.search.model.Result;
-import com.zigurs.karlis.utils.search.model.ResultItem;
+import de.ingef.utils.search.graph.QSGraph;
+import de.ingef.utils.search.model.QuickSearchStats;
+import de.ingef.utils.search.model.Result;
+import de.ingef.utils.search.model.ResultItem;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,14 +30,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-import static com.zigurs.karlis.utils.search.QuickSearch.MergePolicy.UNION;
-import static com.zigurs.karlis.utils.search.QuickSearch.UnmatchedPolicy.BACKTRACKING;
+import static de.ingef.utils.search.QuickSearch.MergePolicy.UNION;
+import static de.ingef.utils.search.QuickSearch.UnmatchedPolicy.BACKTRACKING;
 import static com.zigurs.karlis.utils.sort.MagicSort.sortAndLimit;
 
 /**
@@ -155,9 +153,9 @@ public class QuickSearch<T extends Comparable<T>> {
      * <p>
      * Provided for general use.
      * <p>
-     * Further details at {@link QuickSearchBuilder#withKeywordMatchScorer(BiFunction)}.
+     * Further details at {@link QuickSearchBuilder#withKeywordMatchScorer(SearchScorer)}.
      */
-    private static final BiFunction<String, String, Double> DEFAULT_MATCH_SCORER = (keywordMatch, keyword) -> {
+    public static final SearchScorer DEFAULT_MATCH_SCORER = (keywordMatch, keyword) -> {
         /* 0...1 depending on the length ratio */
         double matchScore = (double) keywordMatch.length() / (double) keyword.length();
 
@@ -174,9 +172,9 @@ public class QuickSearch<T extends Comparable<T>> {
      * Provided for use cases where exact match between supplied search string and keyword is required
      * (e.g. faceted filtering).
      * <p>
-     * Further details at {@link QuickSearchBuilder#withKeywordMatchScorer(BiFunction)}.
+     * Further details at {@link QuickSearchBuilder#withKeywordMatchScorer(SearchScorer)}.
      */
-    public static final BiFunction<String, String, Double> EXACT_MATCH_SCORER = (candidate, keyword) -> {
+    public static final SearchScorer EXACT_MATCH_SCORER = (candidate, keyword) -> {
         /* Only allow exact matches through (returning < 0.0 means skip this candidate) */
         return candidate.length() == keyword.length() ? 1.0 : -1.0;
     };
@@ -188,7 +186,7 @@ public class QuickSearch<T extends Comparable<T>> {
     private final BinaryOperator<Map<T, Double>> mergeFunction;
     private final UnmatchedPolicy unmatchedPolicy;
 
-    private final BiFunction<String, String, Double> keywordMatchScorer;
+    private final SearchScorer keywordMatchScorer;
     private final Function<String, String> keywordNormalizer;
     private final Function<String, Set<String>> keywordsExtractor;
 
@@ -273,7 +271,24 @@ public class QuickSearch<T extends Comparable<T>> {
         removeItemImpl(item);
     }
 
-    /**
+	/**
+	 * Retrieve (find) top matching item for specified search string.
+	 * <p>
+	 * Note that the call to this method is not guaranteed to return the same item
+	 * if multiple items in the instance have identical score for the supplied search
+	 * string and the instance is modified between invocations (adding or removing
+	 * seemingly unrelated items) or search instance is configured to use parallel
+	 * processing.
+	 *
+	 * @param searchString raw search string
+	 *
+	 * @return {@link Optional} wrapping (or not) the top scoring item found in instance
+	 */
+	public Optional<T> findItem(final String searchString) {
+		return findItem(searchString, keywordMatchScorer);
+	}
+
+	/**
      * Retrieve (find) top matching item for specified search string.
      * <p>
      * Note that the call to this method is not guaranteed to return the same item
@@ -284,34 +299,35 @@ public class QuickSearch<T extends Comparable<T>> {
      *
      * @param searchString raw search string
      *
-     * @return {@link Optional} wrapping (or not) the top scoring item found in instance
+     * @param keywordMatchScorer
+	 * @return {@link Optional} wrapping (or not) the top scoring item found in instance
      */
-    public Optional<T> findItem(final String searchString) {
-        if (isInvalidRequest(searchString, 1))
-            return Optional.empty();
-
-        ImmutableSet<String> searchKeywords = prepareKeywords(searchString);
-
-        if (searchKeywords.isEmpty())
-            return Optional.empty();
-
-        List<SearchResult<T>> results = doSearch(searchKeywords, 1);
-
-        if (results.isEmpty())
-            return Optional.empty();
-        else
-            return Optional.of(results.get(0).unwrap());
+    public Optional<T> findItem(final String searchString, SearchScorer keywordMatchScorer) {
+        return findItems(searchString,1, keywordMatchScorer).stream().findFirst();
     }
 
-    /**
+	/**
+	 * Retrieve (find) top n items matching the supplied search string.
+	 *
+	 * @param searchString     raw search string, e.g. "new york pizza"
+	 * @param numberOfTopItems number of items the returned result should be limited to (1 to Integer.MAX_VALUE)
+	 *
+	 * @return list (possibly empty) containing up to n top search results
+	 */
+	public List<T> findItems(final String searchString, final int numberOfTopItems) {
+		return findItems(searchString, numberOfTopItems, keywordMatchScorer);
+	}
+
+	/**
      * Retrieve (find) top n items matching the supplied search string.
      *
      * @param searchString     raw search string, e.g. "new york pizza"
      * @param numberOfTopItems number of items the returned result should be limited to (1 to Integer.MAX_VALUE)
      *
-     * @return list (possibly empty) containing up to n top search results
+     * @param keywordMatchScorer
+	 * @return list (possibly empty) containing up to n top search results
      */
-    public List<T> findItems(final String searchString, final int numberOfTopItems) {
+    public List<T> findItems(final String searchString, final int numberOfTopItems, SearchScorer keywordMatchScorer) {
         if (isInvalidRequest(searchString, numberOfTopItems))
             return Collections.emptyList();
 
@@ -320,7 +336,7 @@ public class QuickSearch<T extends Comparable<T>> {
         if (searchKeywords.isEmpty())
             return Collections.emptyList();
 
-        List<SearchResult<T>> results = doSearch(searchKeywords, numberOfTopItems);
+        List<SearchResult<T>> results = doSearch(searchKeywords, numberOfTopItems, keywordMatchScorer);
 
         if (results.isEmpty()) {
             return Collections.emptyList();
@@ -331,49 +347,55 @@ public class QuickSearch<T extends Comparable<T>> {
         }
     }
 
-    /**
+	/**
+	 * Retrieve (find) top matching item for the supplied search string and return it wrapped in the
+	 * {@link ResultItem} response object containing known keywords and assigned search score.
+	 *
+	 * @param searchString raw search string
+	 *
+	 * @return {@link Optional} wrapping (or not) the top scoring item, keywords and score found in instance
+	 */
+	public Optional<ResultItem<T>> findItemWithDetail(final String searchString) {
+		return findItemWithDetail(searchString, keywordMatchScorer);
+	}
+
+	/**
      * Retrieve (find) top matching item for the supplied search string and return it wrapped in the
      * {@link ResultItem} response object containing known keywords and assigned search score.
      *
      * @param searchString raw search string
      *
-     * @return {@link Optional} wrapping (or not) the top scoring item, keywords and score found in instance
+     * @param keywordMatchScorer
+	 * @return {@link Optional} wrapping (or not) the top scoring item, keywords and score found in instance
      */
-    public Optional<ResultItem<T>> findItemWithDetail(final String searchString) {
-        if (isInvalidRequest(searchString, 1))
-            return Optional.empty();
-
-        ImmutableSet<String> searchKeywords = prepareKeywords(searchString);
-
-        if (searchKeywords.isEmpty())
-            return Optional.empty();
-
-        List<SearchResult<T>> results = doSearch(searchKeywords, 1);
-
-        if (results.isEmpty()) {
-            return Optional.empty();
-        } else {
-            SearchResult<T> w = results.get(0);
-            return Optional.of(
-                    new ResultItem<>(
-                            w.unwrap(),
-                            graph.getItemKeywords(w.unwrap()),
-                            w.getScore()
-                    )
-            );
-        }
+    public Optional<ResultItem<T>> findItemWithDetail(final String searchString, SearchScorer keywordMatchScorer) {
+        return findItemsWithDetail(searchString, 1, keywordMatchScorer).getResponseResultItems().stream().findFirst();
     }
 
-    /**
+	/**
+	 * Retrieve (find) an augmented search result containing the search string and
+	 * wrapped found items with their scores and keywords.
+	 *
+	 * @param searchString     raw search string, e.g. "new york pizza"
+	 * @param numberOfTopItems number of items the returned result should be limited to (1 to Integer.MAX_VALUE)
+	 *
+	 * @return wrapper containing zero to n top scoring items and search string
+	 */
+	public Result<T> findItemsWithDetail(final String searchString, final int numberOfTopItems) {
+		return findItemsWithDetail(searchString, numberOfTopItems, keywordMatchScorer);
+	}
+
+	/**
      * Retrieve (find) an augmented search result containing the search string and
      * wrapped found items with their scores and keywords.
      *
      * @param searchString     raw search string, e.g. "new york pizza"
      * @param numberOfTopItems number of items the returned result should be limited to (1 to Integer.MAX_VALUE)
      *
-     * @return wrapper containing zero to n top scoring items and search string
+     * @param keywordMatchScorer
+	 * @return wrapper containing zero to n top scoring items and search string
      */
-    public Result<T> findItemsWithDetail(final String searchString, final int numberOfTopItems) {
+    public Result<T> findItemsWithDetail(final String searchString, final int numberOfTopItems, SearchScorer keywordMatchScorer) {
         if (isInvalidRequest(searchString, numberOfTopItems))
             return new Result<>(searchString, Collections.emptyList(), numberOfTopItems);
 
@@ -382,7 +404,7 @@ public class QuickSearch<T extends Comparable<T>> {
         if (searchKeywords.isEmpty())
             return new Result<>(searchString, Collections.emptyList(), numberOfTopItems);
 
-        List<SearchResult<T>> results = doSearch(searchKeywords, numberOfTopItems);
+        List<SearchResult<T>> results = doSearch(searchKeywords, numberOfTopItems, keywordMatchScorer);
 
         if (results.isEmpty()) {
             return new Result<>(searchString, Collections.emptyList(), numberOfTopItems);
@@ -425,10 +447,10 @@ public class QuickSearch<T extends Comparable<T>> {
     }
 
     private List<SearchResult<T>> doSearch(final ImmutableSet<String> searchKeywords,
-                                           final int maxItemsToList) {
+										   final int maxItemsToList, final SearchScorer keywordMatchScorer) {
 
         final Map<T, Double> results = StreamSupport.stream(searchKeywords.spliterator(), enableParallel)
-                .map(this::walkGraphAndScore)
+                .map(keyword -> walkGraphAndScore(keyword, keywordMatchScorer))
                 .reduce(mergeFunction)
                 .orElseGet(HashMap::new);
 
@@ -453,14 +475,14 @@ public class QuickSearch<T extends Comparable<T>> {
         graph.unregisterItem(item);
     }
 
-    private Map<T, Double> walkGraphAndScore(final String keyword) {
+    private Map<T, Double> walkGraphAndScore(final String keyword, SearchScorer keywordMatchScorer) {
         Map<T, Double> result = graph.walkAndScore(keyword, keywordMatchScorer);
 
         /* Check if we need to back off */
         if (unmatchedPolicy == BACKTRACKING
                 && result.isEmpty()
                 && keyword.length() > 1)
-            return walkGraphAndScore(keyword.substring(0, keyword.length() - 1));
+            return walkGraphAndScore(keyword.substring(0, keyword.length() - 1), keywordMatchScorer);
 
         return result;
     }
@@ -555,7 +577,7 @@ public class QuickSearch<T extends Comparable<T>> {
         /*
          * Defaults
          */
-        private BiFunction<String, String, Double> keywordMatchScorer = DEFAULT_MATCH_SCORER;
+        private SearchScorer keywordMatchScorer = DEFAULT_MATCH_SCORER;
         private Function<String, String> keywordNormalizer = DEFAULT_KEYWORD_NORMALIZER;
         private Function<String, Set<String>> keywordsExtractor = DEFAULT_KEYWORDS_EXTRACTOR;
         private UnmatchedPolicy unmatchedPolicy = BACKTRACKING;
@@ -596,7 +618,7 @@ public class QuickSearch<T extends Comparable<T>> {
          *
          * @return current {@link QuickSearchBuilder} instance for configuration chaining
          */
-        public QuickSearchBuilder withKeywordMatchScorer(BiFunction<String, String, Double> scorerFunction) {
+        public QuickSearchBuilder withKeywordMatchScorer(SearchScorer scorerFunction) {
             Objects.requireNonNull(scorerFunction);
 
             keywordMatchScorer = scorerFunction;

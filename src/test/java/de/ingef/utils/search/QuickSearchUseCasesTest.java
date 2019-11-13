@@ -1,11 +1,11 @@
-package com.zigurs.karlis.utils.search;
+package de.ingef.utils.search;
 
 import org.junit.Test;
 
 import java.util.*;
 
-import static com.zigurs.karlis.utils.search.QuickSearch.MergePolicy.INTERSECTION;
-import static com.zigurs.karlis.utils.search.QuickSearch.UnmatchedPolicy.IGNORE;
+import static de.ingef.utils.search.QuickSearch.MergePolicy.INTERSECTION;
+import static de.ingef.utils.search.QuickSearch.UnmatchedPolicy.IGNORE;
 import static org.junit.Assert.assertEquals;
 
 /**

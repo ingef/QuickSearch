@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.zigurs.karlis.utils.search;
+package de.ingef.utils.search;
 
 import org.github.jamm.MemoryMeter;
 import org.junit.Ignore;

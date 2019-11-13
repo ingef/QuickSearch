@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.zigurs.karlis.utils.search;
+package de.ingef.utils.search;
 
-import com.zigurs.karlis.utils.search.model.QuickSearchStats;
-import com.zigurs.karlis.utils.search.model.Result;
-import com.zigurs.karlis.utils.search.model.ResultItem;
+import de.ingef.utils.search.model.QuickSearchStats;
+import de.ingef.utils.search.model.Result;
+import de.ingef.utils.search.model.ResultItem;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -26,9 +26,9 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
-import static com.zigurs.karlis.utils.search.QuickSearch.MergePolicy.INTERSECTION;
-import static com.zigurs.karlis.utils.search.QuickSearch.MergePolicy.UNION;
-import static com.zigurs.karlis.utils.search.QuickSearch.UnmatchedPolicy.IGNORE;
+import static de.ingef.utils.search.QuickSearch.MergePolicy.INTERSECTION;
+import static de.ingef.utils.search.QuickSearch.MergePolicy.UNION;
+import static de.ingef.utils.search.QuickSearch.UnmatchedPolicy.IGNORE;
 import static org.junit.Assert.*;
 
 public class QuickSearchTest {
@@ -60,11 +60,11 @@ public class QuickSearchTest {
     }
 
     @Test(expected = NullPointerException.class)
-    public void missingScorer() {
-        assertNotNull(QuickSearch.builder()
-                .withKeywordMatchScorer(null)
-                .build());
-    }
+	public void missingScorer() {
+		assertNotNull(QuickSearch.builder()
+								 .withKeywordMatchScorer(null)
+								 .build());
+	}
 
     @Test(expected = NullPointerException.class)
     public void invalidMatchingPolicy() {
@@ -710,20 +710,50 @@ public class QuickSearchTest {
         assertEquals("keyboard", result.get(1));
     }
 
-    @Test
-    public void exactMatching() {
-        searchInstance = QuickSearch.builder()
-                .withMergePolicy(UNION)
-                .withUnmatchedPolicy(IGNORE)
-                .build();
+	@Test
+	public void exactMatching() {
+		searchInstance = QuickSearch.builder()
+									.withMergePolicy(UNION)
+									.withUnmatchedPolicy(IGNORE)
+									.build();
 
-        addItem("keyword", "keyword");
-        addItem("keyboard", "keyboard");
+		addItem("keyword", "keyword");
+		addItem("keyboard", "keyboard");
 
-        List<String> result = searchInstance.findItems("keywZ", 10);
+		List<String> result = searchInstance.findItems("keywZ", 10);
 
-        assertTrue("Unexpected result size", result.isEmpty());
-    }
+		assertTrue("Unexpected result size", result.isEmpty());
+	}
+
+	@Test
+	public void mutlipleScorers() {
+		searchInstance = QuickSearch.builder()
+									.withMergePolicy(UNION)
+									.withUnmatchedPolicy(IGNORE)
+									.build();
+
+		final SearchScorer prefixScorer = (keyword, candidate) -> {
+			/* Sort ascending by length of match */
+			if (candidate.startsWith(keyword))
+				return 1d / (double) candidate.length();
+			else
+				return -1d;
+		};
+
+		addItem("keyword", "keyword");
+		addItem("keyboard", "keyboard");
+		addItem("boardkey", "boardkey");
+
+		assertTrue("Unexpected result size",  searchInstance.findItems("key", 10, QuickSearch.EXACT_MATCH_SCORER).isEmpty());
+		assertEquals("Unexpected result size", 3, searchInstance.findItems("key", 10, QuickSearch.DEFAULT_MATCH_SCORER).size());
+		assertTrue("Unexpected result size",  searchInstance.findItems("key", 10, QuickSearch.EXACT_MATCH_SCORER).isEmpty());
+
+
+		assertEquals("Unexpected result size", 2, searchInstance.findItems("key", 10, prefixScorer).size());
+		assertEquals("Unexpected result size", 3, searchInstance.findItems("key", 10, QuickSearch.DEFAULT_MATCH_SCORER).size());
+
+
+	}
 
     @Test
     public void clear() {
