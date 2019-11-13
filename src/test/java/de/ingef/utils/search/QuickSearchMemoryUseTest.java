@@ -80,6 +80,7 @@ public class QuickSearchMemoryUseTest {
     };
 
     @Test
+	@Ignore
     public void fewItemsCountCheck() {
         /*
          * As measured on:
